@@ -1,11 +1,11 @@
-const { client } = require('../index')
+const { redisClient } = require('../server')
 const { urlModel } = require('../models')
 const { promisify } = require('util')
 const validUrl = require('valid-url')
 const shortId = require('shortid')
 
-const setexAsync = promisify(client.SETEX).bind(client)
-const getAsync = promisify(client.GET).bind(client)
+const SETEX_ASYNC = promisify(redisClient.SETEX).bind(redisClient);
+const GET_ASYNC = promisify(redisClient.GET).bind(redisClient);
 
 const shortUrl = async function (req, res) {
     try {
@@ -18,36 +18,37 @@ const shortUrl = async function (req, res) {
         const urlCode = shortId.generate()
         const url = await urlModel.findOne({ longUrl })
         if (!url) {
-            const newUrl = urlModel.create({
+            const newUrl = await urlModel.create({
                 longUrl,
                 shortUrl: `http:localhost:3000/${urlCode}`,
                 urlCode
             })
-            setexAsync(urlCode, 60 * 60, longUrl)
-            res.status(201).send({ status: true, data: newUrl })
+            await SETEX_ASYNC(urlCode, 60 * 60, longUrl)
+            return res.status(201).send({ status: true, data: newUrl })
         }
-        res.status(201).send({ status: true, data: url })
+        // await SETEX_ASYNC(urlCode, 60 * 60, longUrl)
+        return res.status(201).send({ status: true, data: url })
     }
     catch (err) {
-        res.status(500).send({ status: false, error: err.message });
+        return res.status(500).send({ status: false, error: err.message });
     }
 }
 
 const getUrl = async function (req, res) {
     try {
         const urlCode = req.params.code;
-        let cacheUrl = await getAsync(urlCode)
+        let cacheUrl = await GET_ASYNC(urlCode)
         if (!cacheUrl) {
             let url = await urlModel.findOne({ urlCode })
             if (!url) {
-                res.status(404).send({ status: false, message: 'not valid url' })
+                return res.status(404).send({ status: false, message: 'not valid url' })
             }
-            res.redirect(url)
+            return res.redirect(url.longUrl)
         }
-        res.redirect(cacheUrl)
+        return res.redirect(cacheUrl)
     }
     catch (err) {
-        res.status(500).send({ status: false, error: err.message });
+        return res.status(500).send({ status: false, error: err.message });
     }
 }
 
